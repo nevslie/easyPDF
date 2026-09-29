@@ -1,0 +1,26 @@
+{
+  "name": "easypdf",
+  "version": "1.0.0",
+  "description": "PDFs in Obsidian anzeigen und bearbeiten: Textfelder, Zeichnen, Markieren, Bilder und Unterschriften – wie in Firefox.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nevslie/easyPDF.git"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "builtin-modules": "^5.4.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.13.1",
+    "pdfjs-dist": "6.3.289",
+    "postcss": "^8.5.28",
+    "postcss-nesting": "^14.0.2",
+    "typescript": "^7.0.2"
+  }
+}

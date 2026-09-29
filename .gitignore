@@ -1,6 +1,7 @@
 node_modules/
-main.js
-styles.css
+# Build output (root only – src/styles.css is source!)
+/main.js
+/styles.css
 *.map
 data.json
 .DS_Store

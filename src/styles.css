@@ -1,0 +1,358 @@
+/* Layout ------------------------------------------------------------------ */
+
+.workspace-leaf-content[data-type="easypdf-editor"] .view-content.easypdf-view {
+	padding: 0;
+	overflow: hidden;
+}
+
+.easypdf-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	/* pdf.js uses light-dark() – follow Obsidian's theme. */
+	color-scheme: light;
+}
+
+.theme-dark .easypdf-view {
+	color-scheme: dark;
+}
+
+.easypdf-main {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	background-color: var(--background-secondary);
+}
+
+.easypdf-view .easypdf-viewer-container {
+	position: absolute;
+	inset: 0;
+	overflow: auto;
+	/* pdf.js reads this to size the text/annotation layers correctly */
+	--scale-factor: 1;
+}
+
+.easypdf-view .pdfViewer .page {
+	box-shadow: var(--shadow-s);
+	border: none;
+	margin: 12px auto;
+}
+
+.easypdf-message {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--size-4-8);
+	text-align: center;
+	color: var(--text-muted);
+	background-color: var(--background-secondary);
+}
+
+.easypdf-message.is-error {
+	color: var(--text-error);
+}
+
+.easypdf-hidden {
+	display: none !important;
+}
+
+/* Toolbar ------------------------------------------------------------------ */
+
+.easypdf-toolbar,
+.easypdf-paramsbar,
+.easypdf-findbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	padding: var(--size-4-1) var(--size-4-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	flex: 0 0 auto;
+}
+
+.easypdf-paramsbar,
+.easypdf-findbar {
+	background-color: var(--background-primary-alt);
+	font-size: var(--font-ui-small);
+	gap: var(--size-4-3);
+}
+
+.easypdf-group {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.easypdf-group + .easypdf-group {
+	padding-left: var(--size-4-2);
+	border-left: var(--border-width) solid var(--background-modifier-border);
+}
+
+.easypdf-spacer {
+	flex: 1 1 auto;
+}
+
+.easypdf-spacer + .easypdf-group {
+	border-left: none;
+}
+
+.easypdf-view button.easypdf-btn {
+	background: transparent;
+	box-shadow: none;
+	padding: var(--size-4-1) var(--size-4-2);
+	height: auto;
+}
+
+.easypdf-view button.easypdf-btn.is-disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.easypdf-view button.easypdf-tool.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.easypdf-view button.easypdf-save.is-dirty,
+.view-action.is-dirty {
+	color: var(--interactive-accent);
+	position: relative;
+}
+
+.easypdf-view button.easypdf-save.is-dirty::after,
+.view-action.is-dirty::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	right: 3px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+}
+
+.easypdf-page-input {
+	width: 4.5em;
+	text-align: right;
+	-moz-appearance: textfield;
+}
+
+.easypdf-page-input::-webkit-outer-spin-button,
+.easypdf-page-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+.easypdf-page-count {
+	color: var(--text-muted);
+	padding: 0 var(--size-4-1);
+	white-space: nowrap;
+}
+
+.easypdf-zoom {
+	min-width: 8.5em;
+}
+
+/* Tool options bar ------------------------------------------------------------ */
+
+.easypdf-hint {
+	color: var(--text-muted);
+	margin-right: var(--size-4-2);
+}
+
+.easypdf-field {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	white-space: nowrap;
+}
+
+.easypdf-field input[type="color"] {
+	width: 2.2em;
+	height: 1.6em;
+	padding: 0;
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: none;
+	cursor: pointer;
+}
+
+.easypdf-field input[type="range"] {
+	width: 110px;
+}
+
+.easypdf-value {
+	min-width: 3.2em;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.easypdf-swatches {
+	display: inline-flex;
+	gap: var(--size-4-1);
+}
+
+.easypdf-view button.easypdf-swatch {
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border-radius: 50%;
+	background-color: var(--swatch-color);
+	border: 2px solid var(--background-modifier-border);
+	box-shadow: none;
+}
+
+.easypdf-view button.easypdf-swatch.is-active {
+	border-color: var(--interactive-accent);
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.easypdf-text-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+.easypdf-text-btn-icon {
+	display: inline-flex;
+}
+
+.easypdf-text-btn-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.easypdf-signatures {
+	display: inline-flex;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+}
+
+.easypdf-signature-item {
+	position: relative;
+	height: 36px;
+	padding: 2px 6px;
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background-color: #fff;
+	cursor: pointer;
+}
+
+.easypdf-signature-item:hover {
+	border-color: var(--interactive-accent);
+}
+
+.easypdf-signature-item img {
+	height: 100%;
+	max-width: 160px;
+	object-fit: contain;
+}
+
+.easypdf-view .easypdf-signature-delete {
+	position: absolute;
+	top: -8px;
+	right: -8px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border-radius: 50%;
+	background-color: var(--background-primary);
+	border: var(--border-width) solid var(--background-modifier-border);
+	display: none;
+}
+
+.easypdf-view .easypdf-signature-delete svg {
+	width: 12px;
+	height: 12px;
+}
+
+.easypdf-signature-item:hover .easypdf-signature-delete {
+	display: flex;
+}
+
+/* Find bar ------------------------------------------------------------------ */
+
+.easypdf-find-input {
+	width: 260px;
+}
+
+.easypdf-find-input.easypdf-not-found {
+	border-color: var(--text-error);
+}
+
+.easypdf-find-result {
+	color: var(--text-muted);
+}
+
+/* Cursors per tool (like Firefox) -------------------------------------------- */
+
+.easypdf-view[data-tool="freetext"] .annotationEditorLayer {
+	cursor: text;
+}
+
+.easypdf-view[data-tool="ink"] .annotationEditorLayer {
+	cursor: crosshair;
+}
+
+/* Signature dialog ---------------------------------------------------------- */
+
+.easypdf-signature-modal {
+	width: min(640px, 95vw);
+}
+
+.easypdf-signature-tabs {
+	display: flex;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-3);
+}
+
+.easypdf-signature-tabs button.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.easypdf-signature-area {
+	position: relative;
+	border: var(--border-width) dashed var(--background-modifier-border-hover);
+	border-radius: var(--radius-m);
+	background-color: #fff;
+}
+
+.easypdf-signature-canvas {
+	display: block;
+	width: 100%;
+	aspect-ratio: 3 / 1;
+	touch-action: none;
+	cursor: crosshair;
+}
+
+.easypdf-signature-placeholder {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #888;
+	pointer-events: none;
+	font-size: var(--font-ui-large);
+}
+
+.easypdf-signature-input {
+	width: 100%;
+	height: 120px;
+	font-size: 48px;
+	font-style: italic;
+	font-family: "Segoe Script", "Brush Script MT", "Apple Chancery", cursive;
+	text-align: center;
+	color: #000;
+	background: transparent;
+	border: none;
+}
+
+.easypdf-signature-input:focus {
+	box-shadow: none;
+}

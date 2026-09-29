@@ -1,0 +1,9 @@
+{
+  "id": "easypdf",
+  "name": "easyPDF",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "PDFs anzeigen und bearbeiten: Textfelder, Freihandzeichnen, Markieren, Bilder und Unterschriften – wie im PDF-Editor von Firefox.",
+  "author": "nevslie",
+  "isDesktopOnly": true
+}

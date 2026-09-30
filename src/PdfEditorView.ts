@@ -152,6 +152,20 @@ export class PdfEditorView extends FileView {
 		this.addAction("book-open", "Bearbeiten beenden (normale PDF-Ansicht)", () => void this.exitEditing());
 		this.saveHeaderAction = this.addAction("save", "Speichern (Strg+S)", () => void this.save());
 
+		// Save as soon as the user leaves a text box. pdf.js commits the text in its own
+		// focusout handler (which runs after this capturing listener), so save right after.
+		this.viewerContainerEl.addEventListener(
+			"focusout",
+			(evt) => {
+				const target = evt.target as HTMLElement | null;
+				if (!this.plugin.settings.saveOnTextFieldLeave || !target?.closest(".freeTextEditor")) return;
+				window.setTimeout(() => {
+					if (this.dirty) void this.save(undefined, true);
+				}, 150);
+			},
+			true,
+		);
+
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
 				if (file === this.file) void this.onExternalModify();

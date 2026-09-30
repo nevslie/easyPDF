@@ -37,6 +37,7 @@ Um vorhandene Anmerkungen zu bearbeiten, wählst du das passende Werkzeug und kl
 
 - „Bearbeiten“-Knopf in Obsidians PDF-Ansicht ein- oder ausblenden
 - Standard-Zoom
+- Beim Verlassen eines Textfelds automatisch speichern (standardmäßig an)
 - Automatisch speichern, mit einstellbarer Verzögerung
 - Beim Schließen des Tabs automatisch speichern (standardmäßig an)
 - Standardfarben und -größen der Werkzeuge. Die Werte aus der Werkzeugleiste werden automatisch übernommen.

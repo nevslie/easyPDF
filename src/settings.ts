@@ -8,6 +8,7 @@ export interface EasyPdfSettings {
 	defaultZoom: ZoomDefault;
 	autoSave: boolean;
 	autoSaveDelaySeconds: number;
+	saveOnTextFieldLeave: boolean;
 	saveOnClose: boolean;
 	textColor: string;
 	textSize: number;
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: EasyPdfSettings = {
 	defaultZoom: "auto",
 	autoSave: false,
 	autoSaveDelaySeconds: 3,
+	saveOnTextFieldLeave: true,
 	saveOnClose: true,
 	textColor: "#000000",
 	textSize: 10,
@@ -90,6 +92,16 @@ export class EasyPdfSettingTab extends PluginSettingTab {
 		);
 
 		new Setting(containerEl).setName("Speichern").setHeading();
+
+		new Setting(containerEl)
+			.setName("Beim Verlassen eines Textfelds speichern")
+			.setDesc("Speichert die PDF automatisch, sobald du ein Textfeld verlässt (z. B. daneben klickst oder Esc drückst).")
+			.addToggle((t) =>
+				t.setValue(s.saveOnTextFieldLeave).onChange(async (v) => {
+					s.saveOnTextFieldLeave = v;
+					await save();
+				}),
+			);
 
 		new Setting(containerEl)
 			.setName("Automatisch speichern")

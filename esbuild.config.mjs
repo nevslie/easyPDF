@@ -41,6 +41,26 @@ export const pdfjsIsolationPlugin = {
 			let src = await fs.promises.readFile(args.path, "utf8");
 			src = replaceOnce(src, "} = globalThis.pdfjsLib;", "} = __easypdfLib;");
 			src = replaceOnce(src, "globalThis.pdfjsViewer = {", "const __easypdfUnusedViewer = {");
+			// Race in pdf.js: if a page re-renders (e.g. zoom) while its annotations are still
+			// loading, the editor layer gets created without the annotation layer and is kept
+			// forever. Entering an edit mode then hides the existing annotations on the canvas
+			// but never recreates them as editors – they vanish until the mode is left again.
+			// Only create the editor layer once the annotation layer exists; the follow-up
+			// render creates it then.
+			src = replaceOnce(
+				src,
+				"if (this.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
+				"if (this.annotationLayer?.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
+			);
+			// Second race: entering an edit mode redraws only pages known to have editable
+			// annotations, without them on the canvas. A page whose annotations are still loading
+			// counts as "none", so it keeps them on the canvas and the editors are drawn on top –
+			// doubled, and the canvas copy can't be edited. Treat "not loaded yet" as "maybe".
+			src = replaceOnce(
+				src,
+				"  hasEditableAnnotations() {\n    return !!this.annotationLayer?.hasEditableAnnotations();\n  }\n  get _textHighlighter() {",
+				"  hasEditableAnnotations() {\n    return !!this.annotationLayer && (!this.annotationLayer.annotationLayer || this.annotationLayer.hasEditableAnnotations());\n  }\n  get _textHighlighter() {",
+			);
 			src = `import * as __easypdfLib from "pdfjs-dist/legacy/build/pdf.mjs";\n${src}`;
 			return { contents: src, loader: "js", resolveDir: path.dirname(args.path) };
 		});
@@ -77,7 +97,18 @@ export const virtualModulesPlugin = {
 			namespace: "easypdf-virtual",
 		}));
 		build.onLoad({ filter: /^easypdf:worker$/, namespace: "easypdf-virtual" }, async () => {
-			const src = await fs.promises.readFile(path.join(PDFJS_DIR, "legacy/build/pdf.worker.min.mjs"), "utf8");
+			// The readable build is patched and minified here (patching the .min file would be fragile).
+			let src = await fs.promises.readFile(path.join(PDFJS_DIR, "legacy/build/pdf.worker.mjs"), "utf8");
+			// pdf.js takes the lowest baseline of an existing text box as the position of its first
+			// line. For multi-line text the editor is then placed (lines - 1) lines too low in the
+			// text/ink mode, and moving it there shifts the saved annotation as well. Use the
+			// baseline of the first text item, i.e. the first line.
+			src = replaceOnce(
+				src,
+				"firstPositionY = Math.min(firstPositionY, item.transform[5]);",
+				"if (firstPositionY === Infinity) firstPositionY = item.transform[5];",
+			);
+			({ code: src } = await esbuild.transform(src, { minify: true, format: "esm", target: "es2022" }));
 			return { contents: `export default ${JSON.stringify(src)};`, loader: "js" };
 		});
 		build.onLoad({ filter: /^easypdf:assets$/, namespace: "easypdf-virtual" }, async () => {

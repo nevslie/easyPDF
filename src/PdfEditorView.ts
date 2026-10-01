@@ -1,6 +1,7 @@
 import { FileView, Notice, Scope, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import type EasyPdfPlugin from "./main";
 import { EditorType, ParamType, loadDocument, pdfjsLib, pdfjsViewer } from "./pdfjs";
+import { InkHitTester, type InkHit, type InkHitOptions } from "./inkHit";
 import { HIGHLIGHT_COLORS, MAX_SIGNATURES } from "./settings";
 import {
 	SignatureModal,
@@ -57,9 +58,6 @@ type UIManager = {
 	setSelected: (editor: unknown) => void;
 };
 
-/** Extra hit area (CSS px) around a drawn line that still counts as "on the line". */
-const INK_HIT_TOLERANCE = 6;
-
 export class PdfEditorView extends FileView {
 	private plugin: EasyPdfPlugin;
 
@@ -94,7 +92,7 @@ export class PdfEditorView extends FileView {
 	private saveHeaderAction: HTMLElement | null = null;
 	/** Ink editor whose line is under the pointer (the only one that receives clicks). */
 	private hoveredInkEl: HTMLElement | null = null;
-	private inkSamples = new WeakMap<SVGPathElement, { d: string; step: number; pts: Float32Array }>();
+	private inkHits = new InkHitTester((id) => this.uiManager?.getEditor(id));
 
 	// State
 	private tool: Tool = "none";
@@ -175,27 +173,15 @@ export class PdfEditorView extends FileView {
 		);
 
 		// pdf.js gives every drawing a rectangular box that swallows all clicks. Our CSS makes
-		// these boxes click-through; only the drawing whose line is under the pointer is clickable.
+		// these boxes click-through; only a click on the line itself reaches the drawing.
 		this.viewerContainerEl.addEventListener("pointermove", (evt) => {
-			if (evt.buttons === 0) this.setHoveredInk(this.findInkAt(evt));
+			if (evt.buttons === 0) this.updateInkHover(evt);
 		});
-		this.viewerContainerEl.addEventListener("pointerleave", () => this.setHoveredInk(null));
-		// Touch has no hover: select a drawing directly when its line is tapped.
-		this.viewerContainerEl.addEventListener(
-			"pointerdown",
-			(evt) => {
-				if (evt.pointerType === "mouse") return;
-				const hit = this.findInkAt(evt);
-				this.setHoveredInk(hit);
-				if (!hit || hit.contains(evt.target as Node)) return;
-				const editor = this.uiManager?.getEditor(hit.id);
-				if (!editor) return;
-				evt.preventDefault();
-				evt.stopPropagation();
-				this.uiManager?.setSelected(editor);
-			},
-			true,
-		);
+		this.viewerContainerEl.addEventListener("pointerleave", () => {
+			this.setHoveredInk(null);
+			this.viewerContainerEl.removeClass("easypdf-ink-hover");
+		});
+		this.viewerContainerEl.addEventListener("pointerdown", (evt) => this.onInkPointerDown(evt), true);
 
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
@@ -343,82 +329,62 @@ export class PdfEditorView extends FileView {
 	// Click-through drawings
 	// ---------------------------------------------------------------------------
 
+	/**
+	 * - No tool: a click on a line selects the drawing (switches to draw mode like pdf.js'
+	 *   double click does).
+	 * - Draw mode: only the line of the selected drawing can be grabbed (to move it); everything
+	 *   else is click-through so new lines can start on top of old ones.
+	 * - Other tools: the line of any drawing can be clicked.
+	 */
+	private inkHitOptions(): InkHitOptions | null {
+		switch (this.currentMode()) {
+			case EditorType.DISABLE:
+				return null;
+			case EditorType.NONE:
+				return { editors: "all", annotations: true };
+			case EditorType.INK:
+				return { editors: "selected", annotations: false };
+			default:
+				return { editors: "all", annotations: false };
+		}
+	}
+
+	private updateInkHover(evt: PointerEvent): InkHit | null {
+		const opts = this.inkHitOptions();
+		const hit = opts ? this.inkHits.find(evt.target, evt.clientX, evt.clientY, opts) : null;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// In "no tool" mode pdf.js' editors can't receive clicks; we handle those clicks ourselves.
+		this.setHoveredInk(noTool ? null : (hit?.editorEl ?? null));
+		this.viewerContainerEl.toggleClass("easypdf-ink-hover", noTool && !!hit);
+		return hit;
+	}
+
+	private onInkPointerDown(evt: PointerEvent): void {
+		if (evt.button !== 0) return;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// Mouse/pen already updated the hover state; touch has no hover.
+		if (!noTool && evt.pointerType === "mouse") return;
+		const hit = this.updateInkHover(evt);
+		if (!hit) return;
+		if (noTool) {
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.eventBus?.dispatch("switchannotationeditormode", { source: this, mode: EditorType.INK, editId: hit.editId });
+			return;
+		}
+		if (!hit.editorEl || hit.editorEl.contains(evt.target as Node)) return;
+		const editor = this.uiManager?.getEditor(hit.editorEl.id);
+		if (!editor) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+		this.uiManager?.setSelected(editor);
+	}
+
 	private setHoveredInk(el: HTMLElement | null): void {
 		if (el === this.hoveredInkEl) return;
 		this.hoveredInkEl?.removeClass("easypdf-ink-hit");
 		el?.addClass("easypdf-ink-hit");
 		this.hoveredInkEl = el;
-	}
-
-	/** Returns the ink editor whose line is under the pointer, if any. */
-	private findInkAt(evt: PointerEvent): HTMLElement | null {
-		const page = (evt.target as Element | null)?.closest?.(".page");
-		const layer = page?.querySelector<HTMLElement>(".annotationEditorLayer");
-		// While drawing, existing drawings must never get in the way of a new line.
-		if (!layer || layer.hasClass("drawing") || layer.hasClass("inkEditing")) return null;
-		// In "no tool" mode pdf.js doesn't let editors be clicked at all – keep it that way.
-		if (layer.hasClass("disabled") && !layer.hasClass("highlightEditing")) return null;
-
-		const { clientX: x, clientY: y } = evt;
-		const inks = Array.from(layer.querySelectorAll<HTMLElement>(":scope > .inkEditor"));
-		// Topmost first.
-		for (let i = inks.length - 1; i >= 0; i--) {
-			const div = inks[i];
-			const r = div.getBoundingClientRect();
-			const pad = INK_HIT_TOLERANCE + 20;
-			if (x < r.left - pad || x > r.right + pad || y < r.top - pad || y > r.bottom + pad) continue;
-			if (this.isOnInkLine(div, x, y)) return div;
-		}
-		return null;
-	}
-
-	private isOnInkLine(div: HTMLElement, x: number, y: number): boolean {
-		// The lines live in pdf.js' draw layer as <svg><defs><path id="path_N"/></defs><use/></svg>.
-		const editor = this.uiManager?.getEditor(div.id) as { _drawId?: number | null } | undefined;
-		const drawId = editor?._drawId;
-		if (drawId === null || drawId === undefined) return false;
-		const path = div.doc.getElementById(`path_${drawId}`);
-		if (!(path instanceof SVGPathElement)) return false;
-		const svg = path.ownerSVGElement;
-		const use = svg?.querySelector<SVGUseElement>(":scope > use");
-		const ctm = use?.getScreenCTM();
-		if (!svg || !ctm) return false;
-
-		const strokeWidth = parseFloat(getComputedStyle(svg).strokeWidth) || 1;
-		const tol = strokeWidth / 2 + INK_HIT_TOLERANCE;
-		// Sample the path every ~2 screen pixels.
-		const screenScale = Math.max(Math.hypot(ctm.a, ctm.b), Math.hypot(ctm.c, ctm.d)) || 1;
-		const pts = this.samplePath(path, 2 / screenScale);
-		for (let i = 0; i < pts.length; i += 2) {
-			const px = pts[i];
-			const py = pts[i + 1];
-			const dx = ctm.a * px + ctm.c * py + ctm.e - x;
-			const dy = ctm.b * px + ctm.d * py + ctm.f - y;
-			if (dx * dx + dy * dy <= tol * tol) return true;
-		}
-		return false;
-	}
-
-	/** Points along the path (in its own coordinates), cached until the path or zoom changes. */
-	private samplePath(path: SVGPathElement, step: number): Float32Array {
-		const d = path.getAttribute("d") ?? "";
-		const cached = this.inkSamples.get(path);
-		if (cached && cached.d === d && cached.step <= step * 1.5 && cached.step >= step / 1.5) return cached.pts;
-		let length = 0;
-		try {
-			length = path.getTotalLength();
-		} catch {
-			/* empty path */
-		}
-		const count = Math.min(20000, Math.max(1, Math.ceil(length / step)));
-		const pts = new Float32Array((count + 1) * 2);
-		for (let i = 0; i <= count && length > 0; i++) {
-			const p = path.getPointAtLength((length * i) / count);
-			pts[2 * i] = p.x;
-			pts[2 * i + 1] = p.y;
-		}
-		this.inkSamples.set(path, { d, step, pts });
-		return pts;
 	}
 
 	// ---------------------------------------------------------------------------

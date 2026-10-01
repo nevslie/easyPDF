@@ -58,6 +58,13 @@
 	display: none !important;
 }
 
+/* pdf.js hides elements with the `hidden` class (e.g. the editor of a changed text box once the
+   annotation layer shows it). That rule lives in Firefox's viewer.css, not in pdf_viewer.css. */
+.easypdf-view .hidden,
+.easypdf-view [hidden] {
+	display: none !important;
+}
+
 /* Toolbar ------------------------------------------------------------------ */
 
 .easypdf-toolbar,

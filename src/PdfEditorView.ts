@@ -238,13 +238,21 @@ export class PdfEditorView extends FileView {
 			this.pdfDocument = pdfDocument;
 			(pdfDocument.annotationStorage as unknown as { onSetModified: () => void }).onSetModified = () => this.markDirty();
 
+			// Set zoom and page before the first render (like Firefox): changing them afterwards
+			// re-renders the pages while their annotations may still be loading.
+			eventBus.on(
+				"pagesinit",
+				() => {
+					pdfViewer.currentScaleValue = restore?.scale ?? this.plugin.settings.defaultZoom;
+					if (restore?.page) pdfViewer.currentPageNumber = Math.min(restore.page, pdfDocument.numPages);
+				},
+				{ once: true },
+			);
 			pdfViewer.setDocument(pdfDocument);
 			linkService.setDocument(pdfDocument);
 			await pdfViewer.pagesPromise;
 			if (this.pdfViewer !== pdfViewer) return;
 
-			pdfViewer.currentScaleValue = restore?.scale ?? this.plugin.settings.defaultZoom;
-			if (restore?.page) pdfViewer.currentPageNumber = Math.min(restore.page, pdfDocument.numPages);
 			this.pageCountEl.setText(`/ ${pdfDocument.numPages}`);
 			this.pageInput.max = String(pdfDocument.numPages);
 			this.hideMessage();

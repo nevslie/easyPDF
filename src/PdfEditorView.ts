@@ -354,7 +354,8 @@ export class PdfEditorView extends FileView {
 	private findInkAt(evt: PointerEvent): HTMLElement | null {
 		const page = (evt.target as Element | null)?.closest?.(".page");
 		const layer = page?.querySelector<HTMLElement>(".annotationEditorLayer");
-		if (!layer || layer.hasClass("drawing")) return null;
+		// While drawing, existing drawings must never get in the way of a new line.
+		if (!layer || layer.hasClass("drawing") || layer.hasClass("inkEditing")) return null;
 		// In "no tool" mode pdf.js doesn't let editors be clicked at all – keep it that way.
 		if (layer.hasClass("disabled") && !layer.hasClass("highlightEditing")) return null;
 

@@ -361,7 +361,12 @@
 
 /* pdf.js wraps all lines of a drawing in one rectangular box that swallows every click.
  * Make the box click-through; only the drawing whose line is under the pointer
- * (.easypdf-ink-hit, set from PdfEditorView) or the selected one can be clicked. */
+ * (.easypdf-ink-hit, set from PdfEditorView) or the selected one can be clicked – except in draw mode. */
 .easypdf-view .annotationEditorLayer:not(.drawing) .inkEditor:not(.selectedEditor):not(.easypdf-ink-hit) {
+	pointer-events: none;
+}
+
+/* In draw mode drawings are fully click-through, so a new line can start on top of an old one. */
+.easypdf-view .annotationEditorLayer.inkEditing .inkEditor {
 	pointer-events: none;
 }

@@ -197,6 +197,22 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.easypdf-value.is-editable {
+	cursor: text;
+	border-bottom: 1px dashed var(--text-faint);
+}
+
+.easypdf-value.is-editable:hover {
+	color: var(--text-normal);
+}
+
+.easypdf-field input.easypdf-value-input {
+	width: 4.5em;
+	height: 1.6em;
+	padding: 0 var(--size-4-1);
+	font-variant-numeric: tabular-nums;
+}
+
 .easypdf-swatches {
 	display: inline-flex;
 	gap: var(--size-4-1);

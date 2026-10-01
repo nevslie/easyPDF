@@ -41,6 +41,17 @@ export const pdfjsIsolationPlugin = {
 			let src = await fs.promises.readFile(args.path, "utf8");
 			src = replaceOnce(src, "} = globalThis.pdfjsLib;", "} = __easypdfLib;");
 			src = replaceOnce(src, "globalThis.pdfjsViewer = {", "const __easypdfUnusedViewer = {");
+			// Race in pdf.js: if a page re-renders (e.g. zoom) while its annotations are still
+			// loading, the editor layer gets created without the annotation layer and is kept
+			// forever. Entering an edit mode then hides the existing annotations on the canvas
+			// but never recreates them as editors – they vanish until the mode is left again.
+			// Only create the editor layer once the annotation layer exists; the follow-up
+			// render creates it then.
+			src = replaceOnce(
+				src,
+				"if (this.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
+				"if (this.annotationLayer?.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
+			);
 			src = `import * as __easypdfLib from "pdfjs-dist/legacy/build/pdf.mjs";\n${src}`;
 			return { contents: src, loader: "js", resolveDir: path.dirname(args.path) };
 		});

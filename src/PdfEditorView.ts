@@ -742,11 +742,45 @@ export class PdfEditorView extends FileView {
 			attr: { min: String(min), max: String(max), step: String(step), "data-param": param },
 		});
 		input.value = String(value);
-		const out = field.createSpan({ cls: "easypdf-value", text: format(value) });
+		const out = field.createSpan({ cls: "easypdf-value is-editable", text: format(value) });
+		setTooltip(out, "Klicken, um einen Wert einzugeben", { placement: "bottom" });
 		input.addEventListener("input", () => {
 			const v = Number(input.value);
 			out.setText(format(v));
 			onChange(v);
+		});
+		// Clicking the value swaps it for a number field to type an exact value.
+		out.addEventListener("click", (e) => {
+			e.preventDefault();
+			if (out.hidden) return;
+			const edit = createEl("input", {
+				type: "number",
+				cls: "easypdf-value-input",
+				attr: { min: String(min), max: String(max), step: String(step) },
+			});
+			edit.value = input.value;
+			out.hidden = true;
+			out.after(edit);
+			edit.focus();
+			edit.select();
+			let done = false;
+			const finish = (commit: boolean) => {
+				if (done) return;
+				done = true;
+				const v = Number(edit.value);
+				edit.remove();
+				out.hidden = false;
+				if (!commit || edit.value.trim() === "" || !Number.isFinite(v)) return;
+				const clamped = Math.min(max, Math.max(min, v));
+				input.value = String(clamped);
+				out.setText(format(clamped));
+				onChange(clamped);
+			};
+			edit.addEventListener("keydown", (ev) => {
+				if (ev.key === "Enter") finish(true);
+				else if (ev.key === "Escape") finish(false);
+			});
+			edit.addEventListener("blur", () => finish(true));
 		});
 		(input as HTMLInputElement & { easypdfFormat?: (v: number) => string }).easypdfFormat = format;
 	}

@@ -97,7 +97,18 @@ export const virtualModulesPlugin = {
 			namespace: "easypdf-virtual",
 		}));
 		build.onLoad({ filter: /^easypdf:worker$/, namespace: "easypdf-virtual" }, async () => {
-			const src = await fs.promises.readFile(path.join(PDFJS_DIR, "legacy/build/pdf.worker.min.mjs"), "utf8");
+			// The readable build is patched and minified here (patching the .min file would be fragile).
+			let src = await fs.promises.readFile(path.join(PDFJS_DIR, "legacy/build/pdf.worker.mjs"), "utf8");
+			// pdf.js takes the lowest baseline of an existing text box as the position of its first
+			// line. For multi-line text the editor is then placed (lines - 1) lines too low in the
+			// text/ink mode, and moving it there shifts the saved annotation as well. Use the
+			// baseline of the first text item, i.e. the first line.
+			src = replaceOnce(
+				src,
+				"firstPositionY = Math.min(firstPositionY, item.transform[5]);",
+				"if (firstPositionY === Infinity) firstPositionY = item.transform[5];",
+			);
+			({ code: src } = await esbuild.transform(src, { minify: true, format: "esm", target: "es2022" }));
 			return { contents: `export default ${JSON.stringify(src)};`, loader: "js" };
 		});
 		build.onLoad({ filter: /^easypdf:assets$/, namespace: "easypdf-virtual" }, async () => {

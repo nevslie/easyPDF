@@ -52,6 +52,15 @@ export const pdfjsIsolationPlugin = {
 				"if (this.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
 				"if (this.annotationLayer?.annotationLayer || this.#annotationMode === AnnotationMode.DISABLE) {",
 			);
+			// Second race: entering an edit mode redraws only pages known to have editable
+			// annotations, without them on the canvas. A page whose annotations are still loading
+			// counts as "none", so it keeps them on the canvas and the editors are drawn on top –
+			// doubled, and the canvas copy can't be edited. Treat "not loaded yet" as "maybe".
+			src = replaceOnce(
+				src,
+				"  hasEditableAnnotations() {\n    return !!this.annotationLayer?.hasEditableAnnotations();\n  }\n  get _textHighlighter() {",
+				"  hasEditableAnnotations() {\n    return !!this.annotationLayer && (!this.annotationLayer.annotationLayer || this.annotationLayer.hasEditableAnnotations());\n  }\n  get _textHighlighter() {",
+			);
 			src = `import * as __easypdfLib from "pdfjs-dist/legacy/build/pdf.mjs";\n${src}`;
 			return { contents: src, loader: "js", resolveDir: path.dirname(args.path) };
 		});

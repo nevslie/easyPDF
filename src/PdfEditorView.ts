@@ -1,6 +1,7 @@
 import { FileView, Notice, Scope, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import type EasyPdfPlugin from "./main";
 import { EditorType, ParamType, loadDocument, pdfjsLib, pdfjsViewer } from "./pdfjs";
+import { InkHitTester, type InkHit, type InkHitOptions } from "./inkHit";
 import { HIGHLIGHT_COLORS, MAX_SIGNATURES } from "./settings";
 import {
 	SignatureModal,
@@ -53,6 +54,8 @@ type UIManager = {
 	undo: () => void;
 	redo: () => void;
 	endCurrentEditing: () => void;
+	getEditor: (id: string) => unknown;
+	setSelected: (editor: unknown) => void;
 };
 
 export class PdfEditorView extends FileView {
@@ -87,6 +90,9 @@ export class PdfEditorView extends FileView {
 	private deleteBtn!: HTMLElement;
 	private saveBtn!: HTMLElement;
 	private saveHeaderAction: HTMLElement | null = null;
+	/** Ink editor whose line is under the pointer (the only one that receives clicks). */
+	private hoveredInkEl: HTMLElement | null = null;
+	private inkHits = new InkHitTester((id) => this.uiManager?.getEditor(id));
 
 	// State
 	private tool: Tool = "none";
@@ -165,6 +171,17 @@ export class PdfEditorView extends FileView {
 			},
 			true,
 		);
+
+		// pdf.js gives every drawing a rectangular box that swallows all clicks. Our CSS makes
+		// these boxes click-through; only a click on the line itself reaches the drawing.
+		this.viewerContainerEl.addEventListener("pointermove", (evt) => {
+			if (evt.buttons === 0) this.updateInkHover(evt);
+		});
+		this.viewerContainerEl.addEventListener("pointerleave", () => {
+			this.setHoveredInk(null);
+			this.viewerContainerEl.removeClass("easypdf-ink-hover");
+		});
+		this.viewerContainerEl.addEventListener("pointerdown", (evt) => this.onInkPointerDown(evt), true);
 
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
@@ -265,6 +282,7 @@ export class PdfEditorView extends FileView {
 
 	private async teardownDocument(): Promise<void> {
 		this.uiManager = null;
+		this.hoveredInkEl = null;
 		const task = this.loadingTask;
 		this.loadingTask = null;
 		if (this.pdfViewer) {
@@ -305,6 +323,68 @@ export class PdfEditorView extends FileView {
 	private currentPosition(): { page: number; scale: string } | undefined {
 		if (!this.pdfViewer) return undefined;
 		return { page: this.pdfViewer.currentPageNumber, scale: this.pdfViewer.currentScaleValue };
+	}
+
+	// ---------------------------------------------------------------------------
+	// Click-through drawings
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * - No tool: a click on a line selects the drawing (switches to draw mode like pdf.js'
+	 *   double click does).
+	 * - Draw mode: only the line of the selected drawing can be grabbed (to move it); everything
+	 *   else is click-through so new lines can start on top of old ones.
+	 * - Other tools: the line of any drawing can be clicked.
+	 */
+	private inkHitOptions(): InkHitOptions | null {
+		switch (this.currentMode()) {
+			case EditorType.DISABLE:
+				return null;
+			case EditorType.NONE:
+				return { editors: "all", annotations: true };
+			case EditorType.INK:
+				return { editors: "selected", annotations: false };
+			default:
+				return { editors: "all", annotations: false };
+		}
+	}
+
+	private updateInkHover(evt: PointerEvent): InkHit | null {
+		const opts = this.inkHitOptions();
+		const hit = opts ? this.inkHits.find(evt.target, evt.clientX, evt.clientY, opts) : null;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// In "no tool" mode pdf.js' editors can't receive clicks; we handle those clicks ourselves.
+		this.setHoveredInk(noTool ? null : (hit?.editorEl ?? null));
+		this.viewerContainerEl.toggleClass("easypdf-ink-hover", noTool && !!hit);
+		return hit;
+	}
+
+	private onInkPointerDown(evt: PointerEvent): void {
+		if (evt.button !== 0) return;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// Mouse/pen already updated the hover state; touch has no hover.
+		if (!noTool && evt.pointerType === "mouse") return;
+		const hit = this.updateInkHover(evt);
+		if (!hit) return;
+		if (noTool) {
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.eventBus?.dispatch("switchannotationeditormode", { source: this, mode: EditorType.INK, editId: hit.editId });
+			return;
+		}
+		if (!hit.editorEl || hit.editorEl.contains(evt.target as Node)) return;
+		const editor = this.uiManager?.getEditor(hit.editorEl.id);
+		if (!editor) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+		this.uiManager?.setSelected(editor);
+	}
+
+	private setHoveredInk(el: HTMLElement | null): void {
+		if (el === this.hoveredInkEl) return;
+		this.hoveredInkEl?.removeClass("easypdf-ink-hit");
+		el?.addClass("easypdf-ink-hit");
+		this.hoveredInkEl = el;
 	}
 
 	// ---------------------------------------------------------------------------

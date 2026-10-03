@@ -379,3 +379,28 @@
 .easypdf-signature-input:focus {
 	box-shadow: none;
 }
+
+/* Drawings ------------------------------------------------------------------ */
+
+/* pdf.js wraps all lines of a drawing in one rectangular box that swallows every click.
+ * The boxes are click-through; PdfEditorView marks the drawing whose line is under the
+ * pointer with .easypdf-ink-hit to make just that one clickable. */
+.easypdf-view .annotationEditorLayer:not(.drawing):not(.inkEditing) .inkEditor:not(.selectedEditor):not(.easypdf-ink-hit) {
+	pointer-events: none;
+}
+
+/* Draw mode: everything is click-through (new lines can start on old ones),
+ * only the line of the selected drawing can be grabbed to move it. */
+.easypdf-view .annotationEditorLayer.inkEditing .inkEditor:not(.easypdf-ink-hit) {
+	pointer-events: none;
+}
+
+/* Drawings stored in the PDF: clicks on their line are handled by PdfEditorView. */
+.easypdf-view .annotationLayer section.inkAnnotation {
+	pointer-events: none;
+}
+
+.easypdf-view .easypdf-ink-hover,
+.easypdf-view .easypdf-ink-hover * {
+	cursor: pointer !important;
+}

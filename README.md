@@ -17,7 +17,8 @@ easyPDF verwendet **pdf.js**, dieselbe Engine wie Firefox. Alles, was du hinzuf�
 2. Klicke oben rechts auf das **Stift-Symbol** („Mit easyPDF bearbeiten“). Alternativ geht das per Rechtsklick auf die Datei → **Mit easyPDF bearbeiten** oder über die Befehlspalette → **easyPDF: Aktuelle PDF bearbeiten**.
 3. Wähle in der Werkzeugleiste ein Werkzeug. Nochmal klicken schaltet es wieder aus.
 4. Speichere mit **Strg+S** (Mac: Cmd+S) oder über das Speichern-Symbol. Dabei wird die Originaldatei überschrieben.
-5. Mit dem Buch-Symbol oben rechts (**Bearbeiten beenden**) geht es zurück zur normalen PDF-Ansicht.
+5. Mit dem Flammen-Symbol neben „Speichern“ (**Annotationen einbrennen**) entsteht eine Kopie „Name (eingebrannt).pdf“. Darin sind alle Anmerkungen fest in die Seiten eingezeichnet, Textfelder werden zu normalem Text der Seite. Die Originaldatei bleibt unverändert. Links und Formularfelder bleiben erhalten.
+6. Mit dem Buch-Symbol oben rechts (**Bearbeiten beenden**) geht es zurück zur normalen PDF-Ansicht.
 
 Um vorhandene Anmerkungen zu bearbeiten, wählst du das passende Werkzeug und klickst die Anmerkung an. Mit **Entf** löschst du sie, mit den Pfeiltasten verschiebst du sie.
 
@@ -56,6 +57,7 @@ Für die Entwicklung startet `npm run dev` einen Watch-Build.
 
 - `src/pdfjs.ts`: bindet pdf.js ein. Worker, Standardschriften und WASM-Decoder stecken im Bundle, das Plugin braucht keinen Netzwerkzugriff.
 - `src/PdfEditorView.ts`: die Editor-Ansicht mit Werkzeugleiste, Speichern und Suche.
+- `src/flatten.ts`: brennt Annotationen ein (zeichnet ihre Darstellung mit pdf-lib in den Seiteninhalt).
 - `src/modals.ts`: Dialoge für Unterschrift, Bildauswahl und „Ungespeicherte Änderungen“.
 - `esbuild.config.mjs`: baut das Plugin. pdf.js wird dabei so umgeschrieben, dass es nicht mit Obsidians eigenem pdf.js kollidiert. Außerdem wird das CSS von pdf.js auf die easyPDF-Ansicht beschränkt.
 
@@ -63,4 +65,4 @@ Die erste Version läuft nur auf dem Desktop.
 
 ## Drittanbieter
 
-Das Plugin-Bundle enthält pdf.js (Apache-2.0, © Mozilla Foundation) sowie Schriften von Foxit und Liberation (siehe die jeweiligen Lizenzen im Paket `pdfjs-dist`).
+Das Plugin-Bundle enthält pdf.js (Apache-2.0, © Mozilla Foundation), pdf-lib (MIT) sowie Schriften von Foxit und Liberation (siehe die jeweiligen Lizenzen im Paket `pdfjs-dist`).

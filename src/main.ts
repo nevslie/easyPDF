@@ -45,6 +45,17 @@ export default class EasyPdfPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "burn-in-copy",
+			name: "Annotationen einbrennen (als Kopie speichern)",
+			checkCallback: (checking) => {
+				const view = this.getActiveEditor();
+				if (!view) return false;
+				if (!checking) void view.burnInCopy();
+				return true;
+			},
+		});
+
+		this.addCommand({
 			id: "exit-editing",
 			name: "Bearbeiten beenden (normale PDF-Ansicht)",
 			checkCallback: (checking) => {

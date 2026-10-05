@@ -18,6 +18,7 @@
     "builtin-modules": "^5.4.0",
     "esbuild": "^0.28.2",
     "obsidian": "^1.13.1",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "6.3.289",
     "postcss": "^8.5.28",
     "postcss-nesting": "^14.0.2",

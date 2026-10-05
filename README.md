@@ -7,6 +7,7 @@ PDFs direkt in Obsidian bearbeiten, so wie im PDF-Editor von Firefox:
 - **Markieren:** Text markieren oder frei über die Seite markieren, mit den Farben Gelb, Grün, Blau, Pink und Rot.
 - **Bilder:** Bilder aus dem Vault oder vom Computer einfügen, verschieben und skalieren.
 - **Unterschriften:** Unterschrift zeichnen oder tippen und für später speichern (bis zu 5).
+- **Leere Seite einfügen:** Eine leere Seite an beliebiger Stelle einfügen, z. B. für Aufgaben, die mehr Platz brauchen. Die Seite landet in einer Kopie („Name (bearbeitet).pdf“), die in einem neuen Tab geöffnet wird. Das Original bleibt erhalten. In der Kopie gehen einige Metadaten verloren (Erstellungsdatum, Ersteller-Programm, XMP-Metadaten, Dokumentsprache, Anzeige-Einstellungen).
 - **Weitere Funktionen:** Rückgängig und Wiederholen, Löschen, Suchen, Zoom und Seitennavigation.
 
 easyPDF verwendet **pdf.js**, dieselbe Engine wie Firefox. Alles, was du hinzufügst, wird als **echte PDF-Annotation** gespeichert. Du kannst es später weiter bearbeiten, in easyPDF, Firefox oder anderen PDF-Programmen.
@@ -56,7 +57,7 @@ Für die Entwicklung startet `npm run dev` einen Watch-Build.
 
 - `src/pdfjs.ts`: bindet pdf.js ein. Worker, Standardschriften und WASM-Decoder stecken im Bundle, das Plugin braucht keinen Netzwerkzugriff.
 - `src/PdfEditorView.ts`: die Editor-Ansicht mit Werkzeugleiste, Speichern und Suche.
-- `src/modals.ts`: Dialoge für Unterschrift, Bildauswahl und „Ungespeicherte Änderungen“.
+- `src/modals.ts`: Dialoge für Unterschrift, Bildauswahl, „Leere Seite hinzufügen“ und „Ungespeicherte Änderungen“.
 - `esbuild.config.mjs`: baut das Plugin. pdf.js wird dabei so umgeschrieben, dass es nicht mit Obsidians eigenem pdf.js kollidiert. Außerdem wird das CSS von pdf.js auf die easyPDF-Ansicht beschränkt.
 
 Die erste Version läuft nur auf dem Desktop.

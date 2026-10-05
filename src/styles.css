@@ -379,3 +379,18 @@
 .easypdf-signature-input:focus {
 	box-shadow: none;
 }
+
+/* Insert page dialog ------------------------------------------------------------ */
+
+.easypdf-insert-warning {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-left: 3px solid var(--color-orange);
+	border-radius: var(--radius-s);
+	background-color: rgba(var(--color-orange-rgb), 0.1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.easypdf-insert-warning p {
+	margin: var(--size-4-1) 0;
+}

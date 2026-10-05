@@ -324,3 +324,76 @@ export async function dataUrlToFile(dataUrl: string, name: string): Promise<File
 	const blob = await (await fetch(dataUrl)).blob();
 	return new File([blob], name, { type: blob.type || "image/png" });
 }
+
+/**
+ * Asks where a blank page should go and warns that the result is written to a copy
+ * (pdf.js rebuilds the document, so some document-level metadata is not carried over).
+ */
+export class InsertPageModal extends Modal {
+	private position: number;
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private pageCount: number,
+		defaultPosition: number,
+		private copyName: string,
+		private onDone: (position: number | null) => void,
+	) {
+		super(app);
+		this.position = Math.min(Math.max(defaultPosition, 1), pageCount + 1);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		this.setTitle("Leere Seite hinzufügen");
+
+		new Setting(contentEl)
+			.setName("Position")
+			.setDesc(`Die neue Seite wird zu dieser Seitenzahl (1 – ${this.pageCount + 1}). Nachfolgende Seiten rücken nach hinten.`)
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "1";
+				text.inputEl.max = String(this.pageCount + 1);
+				text.setValue(String(this.position));
+				text.onChange((value) => {
+					const n = parseInt(value, 10);
+					if (Number.isInteger(n)) this.position = Math.min(Math.max(n, 1), this.pageCount + 1);
+				});
+				text.inputEl.addEventListener("keydown", (e) => {
+					if (e.key === "Enter") {
+						e.preventDefault();
+						this.confirm();
+					}
+				});
+				window.setTimeout(() => text.inputEl.select(), 0);
+			});
+
+		const warning = contentEl.createDiv({ cls: "easypdf-insert-warning" });
+		warning.createEl("p", {
+			text: `Die Seite wird in einer Kopie „${this.copyName}“ eingefügt, die in einem neuen Tab geöffnet wird. Dort arbeitest du weiter, das Original bleibt erhalten.`,
+		});
+		warning.createEl("p", {
+			text: "In der Kopie gehen einige Metadaten verloren: Erstellungsdatum, Ersteller-Programm, XMP-Metadaten, Dokumentsprache und Anzeige-Einstellungen. Seiteninhalt, Annotationen, Formularfelder und Lesezeichen bleiben erhalten.",
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Abbrechen").onClick(() => this.close()))
+			.addButton((b) =>
+				b
+					.setButtonText("Kopie erstellen")
+					.setCta()
+					.onClick(() => this.confirm()),
+			);
+	}
+
+	private confirm(): void {
+		this.confirmed = true;
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onDone(this.confirmed ? this.position : null);
+	}
+}

@@ -1,6 +1,7 @@
 import { FileView, Notice, Scope, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import type EasyPdfPlugin from "./main";
 import { EditorType, ParamType, loadDocument, pdfjsLib, pdfjsViewer } from "./pdfjs";
+import { InkHitTester, type InkHit, type InkHitOptions } from "./inkHit";
 import { HIGHLIGHT_COLORS, MAX_SIGNATURES } from "./settings";
 import {
 	InsertPageModal,
@@ -11,6 +12,7 @@ import {
 	pickImageFromComputer,
 	vaultImageToFile,
 } from "./modals";
+import { flattenAnnotations } from "./flatten";
 
 export const VIEW_TYPE_EASYPDF = "easypdf-editor";
 
@@ -54,6 +56,8 @@ type UIManager = {
 	undo: () => void;
 	redo: () => void;
 	endCurrentEditing: () => void;
+	getEditor: (id: string) => unknown;
+	setSelected: (editor: unknown) => void;
 };
 
 export class PdfEditorView extends FileView {
@@ -88,11 +92,15 @@ export class PdfEditorView extends FileView {
 	private deleteBtn!: HTMLElement;
 	private saveBtn!: HTMLElement;
 	private saveHeaderAction: HTMLElement | null = null;
+	/** Ink editor whose line is under the pointer (the only one that receives clicks). */
+	private hoveredInkEl: HTMLElement | null = null;
+	private inkHits = new InkHitTester((id) => this.uiManager?.getEditor(id));
 
 	// State
 	private tool: Tool = "none";
 	private dirty = false;
 	private saving: Promise<void> | null = null;
+	private burning = false;
 	/** Timestamp of our own last write – vault "modify" events right after it are ignored. */
 	private ownWriteAt = 0;
 	/** Set while switching back to Obsidian's viewer after the user chose "discard". */
@@ -168,6 +176,17 @@ export class PdfEditorView extends FileView {
 			},
 			true,
 		);
+
+		// pdf.js gives every drawing a rectangular box that swallows all clicks. Our CSS makes
+		// these boxes click-through; only a click on the line itself reaches the drawing.
+		this.viewerContainerEl.addEventListener("pointermove", (evt) => {
+			if (evt.buttons === 0) this.updateInkHover(evt);
+		});
+		this.viewerContainerEl.addEventListener("pointerleave", () => {
+			this.setHoveredInk(null);
+			this.viewerContainerEl.removeClass("easypdf-ink-hover");
+		});
+		this.viewerContainerEl.addEventListener("pointerdown", (evt) => this.onInkPointerDown(evt), true);
 
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
@@ -278,6 +297,7 @@ export class PdfEditorView extends FileView {
 
 	private async teardownDocument(): Promise<void> {
 		this.uiManager = null;
+		this.hoveredInkEl = null;
 		const task = this.loadingTask;
 		this.loadingTask = null;
 		if (this.pdfViewer) {
@@ -318,6 +338,68 @@ export class PdfEditorView extends FileView {
 	private currentPosition(): { page: number; scale: string } | undefined {
 		if (!this.pdfViewer) return undefined;
 		return { page: this.pdfViewer.currentPageNumber, scale: this.pdfViewer.currentScaleValue };
+	}
+
+	// ---------------------------------------------------------------------------
+	// Click-through drawings
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * - No tool: a click on a line selects the drawing (switches to draw mode like pdf.js'
+	 *   double click does).
+	 * - Draw mode: only the line of the selected drawing can be grabbed (to move it); everything
+	 *   else is click-through so new lines can start on top of old ones.
+	 * - Other tools: the line of any drawing can be clicked.
+	 */
+	private inkHitOptions(): InkHitOptions | null {
+		switch (this.currentMode()) {
+			case EditorType.DISABLE:
+				return null;
+			case EditorType.NONE:
+				return { editors: "all", annotations: true };
+			case EditorType.INK:
+				return { editors: "selected", annotations: false };
+			default:
+				return { editors: "all", annotations: false };
+		}
+	}
+
+	private updateInkHover(evt: PointerEvent): InkHit | null {
+		const opts = this.inkHitOptions();
+		const hit = opts ? this.inkHits.find(evt.target, evt.clientX, evt.clientY, opts) : null;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// In "no tool" mode pdf.js' editors can't receive clicks; we handle those clicks ourselves.
+		this.setHoveredInk(noTool ? null : (hit?.editorEl ?? null));
+		this.viewerContainerEl.toggleClass("easypdf-ink-hover", noTool && !!hit);
+		return hit;
+	}
+
+	private onInkPointerDown(evt: PointerEvent): void {
+		if (evt.button !== 0) return;
+		const noTool = this.currentMode() === EditorType.NONE;
+		// Mouse/pen already updated the hover state; touch has no hover.
+		if (!noTool && evt.pointerType === "mouse") return;
+		const hit = this.updateInkHover(evt);
+		if (!hit) return;
+		if (noTool) {
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.eventBus?.dispatch("switchannotationeditormode", { source: this, mode: EditorType.INK, editId: hit.editId });
+			return;
+		}
+		if (!hit.editorEl || hit.editorEl.contains(evt.target as Node)) return;
+		const editor = this.uiManager?.getEditor(hit.editorEl.id);
+		if (!editor) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+		this.uiManager?.setSelected(editor);
+	}
+
+	private setHoveredInk(el: HTMLElement | null): void {
+		if (el === this.hoveredInkEl) return;
+		this.hoveredInkEl?.removeClass("easypdf-ink-hit");
+		el?.addClass("easypdf-ink-hit");
+		this.hoveredInkEl = el;
 	}
 
 	// ---------------------------------------------------------------------------
@@ -466,6 +548,7 @@ export class PdfEditorView extends FileView {
 		this.redoBtn = this.button(actions, "redo-2", "Wiederholen (Strg+Umschalt+Z)", () => this.editingAction("redo"));
 		this.deleteBtn = this.button(actions, "trash-2", "Auswahl löschen (Entf)", () => this.editingAction("delete"));
 		this.saveBtn = this.button(actions, "save", "Speichern (Strg+S)", () => void this.save(), "easypdf-save");
+		this.button(actions, "flame", "Annotationen einbrennen (als Kopie speichern)", () => void this.burnInCopy());
 		this.setButtonEnabled(this.undoBtn, false);
 		this.setButtonEnabled(this.redoBtn, false);
 		this.setButtonEnabled(this.deleteBtn, false);
@@ -881,20 +964,10 @@ export class PdfEditorView extends FileView {
 	private openInsertPageDialog(): void {
 		const file = this.file;
 		if (!this.pdfDocument || !this.pdfViewer || !file) return;
-		const copyName = this.freeCopyPath(file).split("/").pop() ?? file.name;
+		const copyName = this.copyPath(file, "bearbeitet").split("/").pop() ?? file.name;
 		new InsertPageModal(this.app, this.pdfDocument.numPages, this.pdfViewer.currentPageNumber + 1, copyName, (position) => {
 			if (position !== null) void this.insertBlankPage(file, position);
 		}).open();
-	}
-
-	/** "Name (bearbeitet).pdf", or "Name (bearbeitet 2).pdf" … if taken. Copies of copies don't stack the suffix. */
-	private freeCopyPath(file: TFile): string {
-		const base = file.basename.replace(/ \(bearbeitet(?: \d+)?\)$/, "");
-		const dir = file.parent && !file.parent.isRoot() ? `${file.parent.path}/` : "";
-		for (let n = 1; ; n++) {
-			const path = `${dir}${base} (bearbeitet${n > 1 ? ` ${n}` : ""}).${file.extension}`;
-			if (!this.app.vault.getAbstractFileByPath(path)) return path;
-		}
 	}
 
 	/**
@@ -922,7 +995,7 @@ export class PdfEditorView extends FileView {
 				{ image: blank, insertAfter: position - 2 },
 			]);
 			const copy = await this.app.vault.createBinary(
-				this.freeCopyPath(file),
+				this.copyPath(file, "bearbeitet"),
 				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
 			);
 			await this.app.workspace
@@ -1011,6 +1084,54 @@ export class PdfEditorView extends FileView {
 			}
 		})();
 		await this.saving;
+	}
+
+	/**
+	 * Saves a copy of the PDF with all annotations burned into the pages (text boxes
+	 * become real page text). The original file and its annotations stay untouched.
+	 */
+	async burnInCopy(): Promise<void> {
+		const doc = this.pdfDocument;
+		const file = this.file;
+		if (!doc || !file || this.burning) return;
+		this.burning = true;
+		const notice = new Notice("easyPDF: Annotationen werden eingebrannt …", 0);
+		try {
+			if (this.saving) await this.saving;
+			this.uiManager?.endCurrentEditing();
+			// Includes unsaved edits, without writing them to the original file.
+			const { bytes, flattened, skipped } = await flattenAnnotations(await doc.saveDocument());
+			if (flattened === 0) {
+				new Notice("easyPDF: Keine Annotationen zum Einbrennen gefunden.");
+				return;
+			}
+			const copy = await this.app.vault.createBinary(
+				this.copyPath(file, "eingebrannt"),
+				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+			);
+			const note = skipped > 0 ? ` ${skipped} ohne Darstellung wurden übersprungen.` : "";
+			new Notice(`easyPDF: ${flattened} Annotation(en) in „${copy.name}“ eingebrannt.${note}`);
+			await this.app.workspace.getLeaf("tab").openFile(copy);
+		} catch (err) {
+			console.error("easyPDF: burn-in failed", err);
+			new Notice(`easyPDF: Einbrennen fehlgeschlagen – ${String((err as Error)?.message ?? err)}`);
+		} finally {
+			notice.hide();
+			this.burning = false;
+		}
+	}
+
+	/**
+	 * "Name (label).pdf" next to the original, numbered ("Name (label 2).pdf") if it already
+	 * exists. A file that already carries the label doesn't get it twice.
+	 */
+	private copyPath(file: TFile, label: string): string {
+		const base = file.basename.replace(new RegExp(` \\(${label}(?: \\d+)?\\)$`), "");
+		const dir = file.parent && !file.parent.isRoot() ? `${file.parent.path}/` : "";
+		for (let n = 1; ; n++) {
+			const path = `${dir}${base} (${label}${n > 1 ? ` ${n}` : ""}).pdf`;
+			if (!this.app.vault.getAbstractFileByPath(path)) return path;
+		}
 	}
 
 	/** Switches this tab back to Obsidian's normal PDF viewer. */

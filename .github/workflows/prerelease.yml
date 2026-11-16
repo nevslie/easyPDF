@@ -51,12 +51,21 @@ jobs:
           jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' manifest.json > manifest.tmp
           mv manifest.tmp manifest.json
 
+      # Same layout and naming as the manual releases (e.g. easyPDF_v1-2-0.zip).
+      # The single files stay attached as well: BRAT installs from those.
+      - name: Create zip
+        id: zip
+        run: |
+          zip="easyPDF_v$(echo '${{ steps.version.outputs.version }}' | tr '.' '-').zip"
+          zip -j "$zip" main.js manifest.json styles.css
+          echo "file=$zip" >> "$GITHUB_OUTPUT"
+
       - name: Create pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${{ steps.version.outputs.version }}"
-          gh release create "$tag" main.js manifest.json styles.css \
+          gh release create "$tag" "${{ steps.zip.outputs.file }}" main.js manifest.json styles.css \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "$tag" \

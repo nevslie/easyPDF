@@ -965,7 +965,7 @@ export class PdfEditorView extends FileView {
 		const file = this.file;
 		if (!this.pdfDocument || !this.pdfViewer || !file) return;
 		const copyName = this.copyPath(file, "bearbeitet").split("/").pop() ?? file.name;
-		new InsertPageModal(this.app, this.pdfDocument.numPages, this.pdfViewer.currentPageNumber + 1, copyName, (position) => {
+		new InsertPageModal(this.app, this.pdfDocument.numPages, this.pdfDocument.numPages + 1, copyName, (position) => {
 			if (position !== null) void this.insertBlankPage(file, position);
 		}).open();
 	}

@@ -4,6 +4,7 @@ import { EditorType, ParamType, loadDocument, pdfjsLib, pdfjsViewer } from "./pd
 import { InkHitTester, type InkHit, type InkHitOptions } from "./inkHit";
 import { HIGHLIGHT_COLORS, MAX_SIGNATURES } from "./settings";
 import {
+	InsertPageModal,
 	SignatureModal,
 	UnsavedChangesModal,
 	VaultImageModal,
@@ -11,6 +12,7 @@ import {
 	pickImageFromComputer,
 	vaultImageToFile,
 } from "./modals";
+import { flattenAnnotations } from "./flatten";
 
 export const VIEW_TYPE_EASYPDF = "easypdf-editor";
 
@@ -98,10 +100,13 @@ export class PdfEditorView extends FileView {
 	private tool: Tool = "none";
 	private dirty = false;
 	private saving: Promise<void> | null = null;
+	private burning = false;
 	/** Timestamp of our own last write – vault "modify" events right after it are ignored. */
 	private ownWriteAt = 0;
 	/** Set while switching back to Obsidian's viewer after the user chose "discard". */
 	private discardOnUnload = false;
+	/** Page to show once the document has loaded (set via ephemeral state, e.g. after inserting a page). */
+	private pendingPage: number | null = null;
 	private autoSaveDebounced: (() => void) & { cancel: () => void };
 
 	constructor(leaf: WorkspaceLeaf, plugin: EasyPdfPlugin) {
@@ -203,6 +208,14 @@ export class PdfEditorView extends FileView {
 		await this.openDocument(file);
 	}
 
+	setEphemeralState(state: unknown): void {
+		super.setEphemeralState(state);
+		const page = (state as { page?: unknown } | null)?.page;
+		if (typeof page !== "number") return;
+		if (this.pdfDocument && this.pdfViewer?.pagesCount) this.pdfViewer.currentPageNumber = Math.min(page, this.pdfViewer.pagesCount);
+		else this.pendingPage = page;
+	}
+
 	async onUnloadFile(file: TFile): Promise<void> {
 		this.autoSaveDebounced.cancel();
 		if (this.dirty && !this.discardOnUnload && this.plugin.settings.saveOnClose) {
@@ -261,7 +274,9 @@ export class PdfEditorView extends FileView {
 			if (this.pdfViewer !== pdfViewer) return;
 
 			pdfViewer.currentScaleValue = restore?.scale ?? this.plugin.settings.defaultZoom;
-			if (restore?.page) pdfViewer.currentPageNumber = Math.min(restore.page, pdfDocument.numPages);
+			const page = restore?.page ?? this.pendingPage;
+			this.pendingPage = null;
+			if (page) pdfViewer.currentPageNumber = Math.min(page, pdfDocument.numPages);
 			this.pageCountEl.setText(`/ ${pdfDocument.numPages}`);
 			this.pageInput.max = String(pdfDocument.numPages);
 			this.hideMessage();
@@ -523,12 +538,17 @@ export class PdfEditorView extends FileView {
 			this.toolButtons.set(tool, btn);
 		}
 
+		// Pages
+		const pages = tb.createDiv({ cls: "easypdf-group" });
+		this.button(pages, "file-plus-2", "Leere Seite hinzufügen", () => this.openInsertPageDialog());
+
 		// Actions
 		const actions = tb.createDiv({ cls: "easypdf-group" });
 		this.undoBtn = this.button(actions, "undo-2", "Rückgängig (Strg+Z)", () => this.editingAction("undo"));
 		this.redoBtn = this.button(actions, "redo-2", "Wiederholen (Strg+Umschalt+Z)", () => this.editingAction("redo"));
 		this.deleteBtn = this.button(actions, "trash-2", "Auswahl löschen (Entf)", () => this.editingAction("delete"));
 		this.saveBtn = this.button(actions, "save", "Speichern (Strg+S)", () => void this.save(), "easypdf-save");
+		this.button(actions, "flame", "Annotationen einbrennen (als Kopie speichern)", () => void this.burnInCopy());
 		this.setButtonEnabled(this.undoBtn, false);
 		this.setButtonEnabled(this.redoBtn, false);
 		this.setButtonEnabled(this.deleteBtn, false);
@@ -938,6 +958,59 @@ export class PdfEditorView extends FileView {
 	}
 
 	// ---------------------------------------------------------------------------
+	// Pages
+	// ---------------------------------------------------------------------------
+
+	private openInsertPageDialog(): void {
+		const file = this.file;
+		if (!this.pdfDocument || !this.pdfViewer || !file) return;
+		const copyName = this.copyPath(file, "bearbeitet").split("/").pop() ?? file.name;
+		new InsertPageModal(this.app, this.pdfDocument.numPages, this.pdfViewer.currentPageNumber + 1, copyName, (position) => {
+			if (position !== null) void this.insertBlankPage(file, position);
+		}).open();
+	}
+
+	/**
+	 * Writes a copy of the PDF with a blank page at `position` (1-based) and opens it in a new tab.
+	 * pdf.js rebuilds the whole document for this, which drops some document-level metadata –
+	 * hence a copy instead of overwriting the original.
+	 */
+	private async insertBlankPage(file: TFile, position: number): Promise<void> {
+		const doc = this.pdfDocument;
+		if (!doc) return;
+		// Store pending edits in the original first, so both files contain them.
+		this.uiManager?.endCurrentEditing();
+		if (this.dirty) {
+			await this.save(file, true);
+			if (this.dirty) return;
+		}
+		const notice = new Notice("easyPDF: Seite wird eingefügt …", 0);
+		try {
+			// pdf.js only creates new pages from an image. A single transparent pixel
+			// yields an empty page and keeps the original as the only source document,
+			// so title, author, page labels etc. are carried over.
+			const blank = await createImageBitmap(new ImageData(1, 1));
+			const bytes = await doc.extractPages([
+				{ document: null },
+				{ image: blank, insertAfter: position - 2 },
+			]);
+			const copy = await this.app.vault.createBinary(
+				this.copyPath(file, "bearbeitet"),
+				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+			);
+			await this.app.workspace
+				.getLeaf("tab")
+				.setViewState({ type: VIEW_TYPE_EASYPDF, state: { file: copy.path }, active: true }, { page: position });
+			new Notice(`„${copy.name}“ mit neuer Seite ${position} erstellt.`);
+		} catch (err) {
+			console.error("easyPDF: inserting a page failed", err);
+			new Notice(`easyPDF: Seite konnte nicht eingefügt werden – ${String((err as Error)?.message ?? err)}`);
+		} finally {
+			notice.hide();
+		}
+	}
+
+	// ---------------------------------------------------------------------------
 	// Saving
 	// ---------------------------------------------------------------------------
 
@@ -1011,6 +1084,54 @@ export class PdfEditorView extends FileView {
 			}
 		})();
 		await this.saving;
+	}
+
+	/**
+	 * Saves a copy of the PDF with all annotations burned into the pages (text boxes
+	 * become real page text). The original file and its annotations stay untouched.
+	 */
+	async burnInCopy(): Promise<void> {
+		const doc = this.pdfDocument;
+		const file = this.file;
+		if (!doc || !file || this.burning) return;
+		this.burning = true;
+		const notice = new Notice("easyPDF: Annotationen werden eingebrannt …", 0);
+		try {
+			if (this.saving) await this.saving;
+			this.uiManager?.endCurrentEditing();
+			// Includes unsaved edits, without writing them to the original file.
+			const { bytes, flattened, skipped } = await flattenAnnotations(await doc.saveDocument());
+			if (flattened === 0) {
+				new Notice("easyPDF: Keine Annotationen zum Einbrennen gefunden.");
+				return;
+			}
+			const copy = await this.app.vault.createBinary(
+				this.copyPath(file, "eingebrannt"),
+				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+			);
+			const note = skipped > 0 ? ` ${skipped} ohne Darstellung wurden übersprungen.` : "";
+			new Notice(`easyPDF: ${flattened} Annotation(en) in „${copy.name}“ eingebrannt.${note}`);
+			await this.app.workspace.getLeaf("tab").openFile(copy);
+		} catch (err) {
+			console.error("easyPDF: burn-in failed", err);
+			new Notice(`easyPDF: Einbrennen fehlgeschlagen – ${String((err as Error)?.message ?? err)}`);
+		} finally {
+			notice.hide();
+			this.burning = false;
+		}
+	}
+
+	/**
+	 * "Name (label).pdf" next to the original, numbered ("Name (label 2).pdf") if it already
+	 * exists. A file that already carries the label doesn't get it twice.
+	 */
+	private copyPath(file: TFile, label: string): string {
+		const base = file.basename.replace(new RegExp(` \\(${label}(?: \\d+)?\\)$`), "");
+		const dir = file.parent && !file.parent.isRoot() ? `${file.parent.path}/` : "";
+		for (let n = 1; ; n++) {
+			const path = `${dir}${base} (${label}${n > 1 ? ` ${n}` : ""}).pdf`;
+			if (!this.app.vault.getAbstractFileByPath(path)) return path;
+		}
 	}
 
 	/** Switches this tab back to Obsidian's normal PDF viewer. */

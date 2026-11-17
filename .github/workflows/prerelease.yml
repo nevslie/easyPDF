@@ -1,0 +1,73 @@
+# Builds every push to development (i.e. every merged PR) and publishes it as a
+# GitHub pre-release. Pre-releases never become "Latest", so Obsidian doesn't offer
+# them as updates; they can be installed for testing with the BRAT plugin.
+#
+# Version: next minor after the latest real release, plus a beta counter,
+# e.g. latest v1.2.0 -> v1.3.0-beta.1, v1.3.0-beta.2, …
+name: Pre-Release
+
+on:
+  push:
+    branches: [development]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prerelease
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are needed to determine the version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Determine version
+        id: version
+        run: |
+          latest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v -- '-' | head -n1)
+          latest=${latest:-v0.0.0}
+          IFS=. read -r major minor _ <<< "${latest#v}"
+          base="$major.$((minor + 1)).0"
+          last=$(git tag -l "v$base-beta.*" | sed 's/.*-beta\.//' | sort -n | tail -n1)
+          version="$base-beta.$(( ${last:-0} + 1 ))"
+          echo "Latest release: $latest -> pre-release: v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set version in manifest.json
+        run: |
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' manifest.json > manifest.tmp
+          mv manifest.tmp manifest.json
+
+      # Same layout and naming as the manual releases (e.g. easyPDF_v1-2-0.zip).
+      # The single files stay attached as well: BRAT installs from those.
+      - name: Create zip
+        id: zip
+        run: |
+          zip="easyPDF_v$(echo '${{ steps.version.outputs.version }}' | tr '.' '-').zip"
+          zip -j "$zip" main.js manifest.json styles.css
+          echo "file=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          gh release create "$tag" "${{ steps.zip.outputs.file }}" main.js manifest.json styles.css \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --notes "Test-Release vom Branch development (Commit ${GITHUB_SHA::7})." \
+            --generate-notes

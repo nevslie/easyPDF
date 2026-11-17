@@ -1,6 +1,6 @@
 {
   "name": "easypdf",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "PDFs in Obsidian anzeigen und bearbeiten: Textfelder, Zeichnen, Markieren, Bilder und Unterschriften – wie in Firefox.",
   "main": "main.js",
   "private": true,
